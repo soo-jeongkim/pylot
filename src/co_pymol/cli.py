@@ -233,8 +233,8 @@ def cmd_install_codex(args: argparse.Namespace) -> None:
 def cmd_proxy(args: argparse.Namespace) -> int:
     # Deferred import: proxy.py pulls in mcp/anyio, which (like pymol) only exist
     # where the package's deps are installed. Importing it lazily here keeps the
-    # rest of the CLI (install-hook/install-codex/install-config) runnable under
-    # a stdlib-only Python that just has the package source on its path.
+    # setup/install helpers runnable under a stdlib-only Python that just has
+    # the package source on its path.
     from co_pymol.proxy import run_proxy
 
     return run_proxy(args.host, args.port)
@@ -252,17 +252,25 @@ def cmd_install_config(args: argparse.Namespace) -> None:
 
 
 def add_server_opts(parser: argparse.ArgumentParser) -> None:
-    """Add the shared --host/--port options locating the co-pymol SSE server."""
+    """Add client-side options locating an existing co-pymol SSE server."""
     parser.add_argument(
         "--host",
         default=DEFAULT_HOST,
-        help=f"co-pymol SSE host (default: {DEFAULT_HOST})",
+        help=(
+            "SSE host the configured client or proxy connects to; does not "
+            "change PyMOL's "
+            f"automatic bind (default: {DEFAULT_HOST})"
+        ),
     )
     parser.add_argument(
         "--port",
         type=int,
         default=DEFAULT_PORT,
-        help=f"co-pymol SSE port (default: {DEFAULT_PORT})",
+        help=(
+            "SSE port the configured client or proxy connects to; does not "
+            "change PyMOL's "
+            f"automatic bind (default: {DEFAULT_PORT})"
+        ),
     )
 
 

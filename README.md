@@ -8,7 +8,7 @@
 - **Read confidence values** (pLDDT / ipTM / pTM / PAE) on an agent's window via a gemmi-backed metrics layer that parses mmCIF
 - **Drop in your own helpers** — point the agent at a `.py` of custom PyMOL presets / analysis functions and ask it to use them
 - **Work over SSHFS-mounted cluster paths** as usual
-- **Remote-control from your phone**, since it all runs through Claude Code — plus any other Claude capabilities
+- **Remote-control from your phone** through an MCP client that supports remote sessions
 
 An example session in Codex / Claude Code / Cursor:
 
@@ -68,17 +68,28 @@ re-run.
 The client setup is global, so `pymol` is available from every session and
 there is no need to `cd` into this repo. It uses the recommended bundled stdio
 proxy (`co-pymol proxy`), which forwards to PyMOL and survives PyMOL
-quitting/restarting. While PyMOL is down, tool calls return a clear message;
-when PyMOL reconnects, the client refreshes the real tool list.
+quitting/restarting. After one successful connection, tool calls made while
+PyMOL is down return a clear message. On a cold start, the tools appear when
+PyMOL first connects.
 
-Codex's URL transport is Streamable HTTP rather than SSE, so Codex must use the
-proxy. Cursor and Claude Code can use direct SSE instead, but their connections
-drop whenever PyMOL restarts. For that advanced setup, use `install-config
---sse` for Cursor or `claude mcp add --transport sse --scope user pymol
-http://127.0.0.1:8766/sse` for Claude Code.
+Codex supports local stdio and Streamable HTTP servers, not co-pymol's SSE
+endpoint, so Codex must use the proxy. Cursor and Claude Code can use direct SSE
+instead, but their connections drop whenever PyMOL restarts. To switch after
+normal setup, use:
 
-Running PyMOL on a non-default host or port? Add `--host <host> --port <port>`
-after the selected client name.
+```bash
+# Cursor: replace its proxy entry with the direct SSE URL
+/Applications/PyMOL.app/Contents/bin/python -m co_pymol install-config --sse
+
+# Claude Code: replace its user-scoped proxy entry with the direct SSE URL
+claude mcp remove pymol --scope user
+claude mcp add --transport sse --scope user pymol http://127.0.0.1:8766/sse
+```
+
+The `--host` and `--port` options on setup commands change where the client-side
+proxy connects; they do not change the address started by the automatic PyMOL
+hook, which is currently fixed at `127.0.0.1:8766`. Leave those options off for
+the normal installation.
 
 **3. Restart PyMOL and your selected client**
 
@@ -94,6 +105,12 @@ By default the server binds `127.0.0.1:8766` (loopback), so PyMOL and the MCP
 client must run on the same machine. The proxy supports starting the client
 before PyMOL; that reverse-order flow requires Cursor 3.12.17 or newer.
 
+Confirm the selected client has the entry: run `codex mcp list` or
+`claude mcp list`, or open Cursor Settings → MCP. Codex's MCP configuration is
+shared by the ChatGPT desktop app, Codex CLI, and Codex IDE extension on the
+same host. See the
+[official Codex MCP documentation](https://developers.openai.com/codex/mcp/).
+
 **4. Confirm the agent is talking to PyMOL**
 
 Ask the agent something like *"are you connected to PyMOL? what version is
@@ -105,14 +122,22 @@ make sure you opened a new client session after setup.
 
 Already have an older version? How you update depends on how you installed it:
 
-- **Editable install** (`pip install -e .`, the recipe above) — `git pull` in the repo, restart PyMOL, and re-point your MCP client at the proxy (below). No reinstall needed.
-- **Non-editable install** — `git pull`, then re-run `<pymol-python> -m pip install --user -e .` to pick up the new code.
+- **Editable install** (`pip install -e .`, the recipe above) — `git pull` updates
+  the source immediately, but re-run the install when dependencies or package
+  metadata change. Do that once for the 0.2.0 upgrade.
+- **Non-editable install** — `git pull`, then re-run
+  `<pymol-python> -m pip install --user -e .` to pick up the new code and switch
+  to an editable install.
 - **Installed back when it was `pylot`** — uninstall `pylot`, remove its line from `~/.pymolrc.py`, then do a fresh install.
 
-The change you'll actually feel in 0.2.0 is the **proxy wiring**: re-run
-`co-pymol setup codex`, `co-pymol setup cursor`, or `co-pymol setup claude` for
-the client you use. If your client still points at the older `-m
-co_pymol.proxy`, it won't start — update it.
+For 0.2.0, pull the code and re-run:
+
+```bash
+/Applications/PyMOL.app/Contents/bin/python -m pip install --user -e .
+```
+
+Then re-run the setup command from step 2 for the client you use. If its entry
+still points at the older `-m co_pymol.proxy`, it won't start.
 
 The full step-by-step, including how to tell which kind of install you have, is in the **"Upgrading an existing install"** section of [`AGENTS.md`](./AGENTS.md) — or just point your coding agent at that file.
 
@@ -130,7 +155,8 @@ Want sample data? **[Click here](https://500.kim/resources/pizza-and-pymol.zip)*
 
 ## Uninstalling
 
-Reverses the install steps. There's no `uninstall` subcommand, so the config edits are manual — they're one line each.
+Reverses the install steps. There's no `uninstall` subcommand, so remove the
+client entry and the two startup-hook lines as described below.
 
 **1. Unwire your MCP client**
 
@@ -171,5 +197,9 @@ A full quit + relaunch. The `MCP server running on...` line should be gone. The 
 
 ## Notes
 
-- **`run()` security** — executes locally with restricted Python builtins (no imports / file I/O), but full PyMOL access via `cmd`. Only connect trusted MCP clients.
-- **Dev setup (optional)** — `pip install -e ".[dev]" && pytest`. Pre-commit hooks are available but not required — see `.pre-commit-config.yaml`.
+- **`run()` security** — executes arbitrary Python locally with full imports,
+  file I/O, and PyMOL access. Only connect trusted MCP clients, and keep the
+  server on loopback unless you have separately secured the network path.
+- **Dev setup (optional)** — install `.[dev]` into PyMOL's Python, then run tests
+  with that same interpreter. See [`AGENTS.md`](./AGENTS.md) and
+  `.pre-commit-config.yaml`.

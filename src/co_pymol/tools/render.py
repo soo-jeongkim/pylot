@@ -15,7 +15,7 @@ def register_render_tools(mcp: FastMCP) -> None:
     def color_by_plddt(selection: str = "all") -> str:
         """Color by pLDDT (B-factor 0–100) with discrete AlphaFold bins.
 
-        Blue ≥90, cyan 70–90, yellow 50–70, orange <50.
+        Blue ≥90, cyan 70–<90, yellow 50–<70, orange <50.
         """
         with pymol_session() as cmd:
             apply_plddt_palette(cmd, selection)
