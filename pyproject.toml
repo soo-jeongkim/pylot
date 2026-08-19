@@ -1,7 +1,7 @@
 [project]
 name = "co-pymol"
-version = "0.2.0"
-description = "PyMOL plugin that exposes PyMOL as MCP tools for Claude Code and Claude mobile"
+version = "0.3.0"
+description = "PyMOL plugin that exposes PyMOL as tools for MCP clients"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
@@ -10,6 +10,9 @@ dependencies = [
     "anyio>=4.0",
     "numpy>=1.24",
     "gemmi>=0.6",
+    # PyMOL's Intel macOS bundle lacks Python headers, so cryptography must use
+    # the last release line that supplies a compatible prebuilt wheel.
+    "cryptography<46; sys_platform == 'darwin' and platform_machine == 'x86_64'",
 ]
 
 [project.optional-dependencies]

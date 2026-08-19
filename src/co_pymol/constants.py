@@ -28,7 +28,7 @@ PROXY_BACKOFF_CAP = float(os.environ.get("PYMOL_PROXY_BACKOFF_CAP", "5.0"))
 # connect before falling back to a synthesized (empty-tools) reply. Finite so a
 # cold start with PyMOL not yet running doesn't hang the client's handshake.
 PROXY_FIRST_CONNECT_WAIT = float(
-    os.environ.get("PYMOL_PROXY_FIRST_CONNECT_WAIT", "12.0")
+    os.environ.get("PYMOL_PROXY_FIRST_CONNECT_WAIT", "5.0")
 )
 # JSON-RPC implementation-defined server error (valid range -32000..-32099).
 JSONRPC_SERVER_ERROR_CODE = -32000
