@@ -26,7 +26,7 @@ What it does that an off-the-shelf bridge does not:
 This module imports ``mcp``/``anyio`` at the top level, so it must only be
 imported in an environment where the package's dependencies are installed (the
 CLI defers importing it into the ``proxy`` subcommand handler for exactly this
-reason — keeping ``co-pymol install-hook`` runnable under a stdlib-only Python).
+reason — keeping the setup/install helpers runnable under a stdlib-only Python).
 stdout is the protocol channel — keep it clean. All logging goes to stderr.
 """
 

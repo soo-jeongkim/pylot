@@ -13,7 +13,7 @@ Thanks for the interest! co-pymol is an active WIP maintained by one person, so 
 
 **Probably out of scope — open an issue first:**
 
-- New transports beyond SSE
+- New in-process server transports beyond SSE, or replacement proxy architectures
 - Anything that pulls PyMOL into a pip dep
 - UI / Electron wrappers
 
@@ -24,22 +24,27 @@ Thanks for the interest! co-pymol is an active WIP maintained by one person, so 
 
 ## Dev setup, architecture, adding tools
 
-See [`AGENTS.md`](./AGENTS.md) §1. It's written for coding agents, but the recipe is the same for humans: install into PyMOL's bundled Python with the `[dev]` extras, run `pytest`, and follow the `type: subject` commit style (see `git log` for examples).
+See [`AGENTS.md`](./AGENTS.md) §1. It's written for coding agents, but the recipe
+is the same for humans: install into PyMOL's bundled Python with the `[dev]`
+extras, run tests through that interpreter, and follow the `type: subject`
+commit style (see `git log` for examples).
 
 Quick reference:
 
 ```bash
 /Applications/PyMOL.app/Contents/bin/python -m pip install --user -e ".[dev]"
-pytest
-pre-commit install   # optional
+/Applications/PyMOL.app/Contents/bin/python -m pytest
 ```
 
-Lint/format is `ruff` (config in `pyproject.toml`).
+Lint/format is `ruff` (config in `pyproject.toml`); run it through the same
+PyMOL interpreter after installing the development extras. The optional local
+pre-commit hooks currently invoke `python3 -m ruff`, so only install them when
+that command works in your shell environment.
 
 ## PRs
 
 - One logical change per PR.
-- Run `pytest` and `pre-commit run --all-files` locally before pushing.
+- Run tests and the Ruff checks locally before pushing.
 - If you're adding or renaming a tool, update `src/co_pymol/instructions.md` when its existence changes how agents should behave — that file is what the server pushes to every connected client.
 
 ## Reporting bugs

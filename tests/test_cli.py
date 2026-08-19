@@ -2,9 +2,79 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 
 from co_pymol import cli
+
+
+def test_setup_cursor_installs_hook_and_only_configures_cursor(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(cli.sys, "executable", "/Applications/PyMOL/python")
+
+    def unexpected_lookup(name):
+        raise AssertionError(f"setup cursor should not inspect {name}")
+
+    monkeypatch.setattr(cli.shutil, "which", unexpected_lookup)
+
+    assert cli.main(["setup", "cursor", "--host", "10.0.0.8", "--port", "9000"]) == 0
+
+    assert cli.PYMOLRC_LINE in (tmp_path / ".pymolrc.py").read_text()
+    config = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
+    assert config["mcpServers"]["pymol"] == {
+        "command": "/Applications/PyMOL/python",
+        "args": [
+            "-m",
+            "co_pymol",
+            "proxy",
+            "--host",
+            "10.0.0.8",
+            "--port",
+            "9000",
+        ],
+    }
+
+
+def test_setup_codex_installs_hook_and_only_configures_codex(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    looked_up = []
+
+    def fake_which(name):
+        looked_up.append(name)
+        return "/opt/bin/codex"
+
+    monkeypatch.setattr(cli.shutil, "which", fake_which)
+    monkeypatch.setattr(
+        cli.subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "", ""),
+    )
+
+    assert cli.main(["setup", "codex"]) == 0
+
+    assert cli.PYMOLRC_LINE in (tmp_path / ".pymolrc.py").read_text()
+    assert looked_up == ["codex", "codex"]
+
+
+def test_setup_missing_selected_client_does_not_install_hook(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    looked_up = []
+
+    def fake_which(name):
+        looked_up.append(name)
+        return None
+
+    monkeypatch.setattr(cli.shutil, "which", fake_which)
+
+    assert cli.main(["setup", "claude"]) == 1
+    assert looked_up == ["claude"]
+    assert not (tmp_path / ".pymolrc.py").exists()
 
 
 def test_install_codex_registers_proxy_with_current_python(monkeypatch) -> None:
@@ -60,3 +130,66 @@ def test_install_codex_reports_codex_failure(monkeypatch) -> None:
     monkeypatch.setattr(cli.subprocess, "run", fake_run)
 
     assert cli.main(["install-codex"]) == 1
+
+
+def test_install_claude_registers_user_scoped_proxy(monkeypatch) -> None:
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/opt/bin/claude")
+    monkeypatch.setattr(cli.sys, "executable", "/Applications/PyMOL/python")
+    called = []
+
+    def fake_run(command, **kwargs):
+        called.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, "Added pymol.\n", "")
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    message = cli.install_claude_mcp("127.0.0.1", 8766)
+
+    assert message == "Added pymol."
+    assert called == [
+        (
+            [
+                "/opt/bin/claude",
+                "mcp",
+                "add",
+                "--scope",
+                "user",
+                "pymol",
+                "--",
+                "/Applications/PyMOL/python",
+                "-m",
+                "co_pymol",
+                "proxy",
+            ],
+            {"capture_output": True, "text": True},
+        )
+    ]
+
+
+def test_install_claude_replaces_existing_user_entry(monkeypatch) -> None:
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/opt/bin/claude")
+    results = iter(
+        [
+            subprocess.CompletedProcess([], 1, "", "pymol already exists"),
+            subprocess.CompletedProcess([], 0, "Removed pymol.\n", ""),
+            subprocess.CompletedProcess([], 0, "Added pymol.\n", ""),
+        ]
+    )
+    called = []
+
+    def fake_run(command, **kwargs):
+        called.append(command)
+        return next(results)
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    assert cli.install_claude_mcp("127.0.0.1", 8766) == "Added pymol."
+    assert called[1] == [
+        "/opt/bin/claude",
+        "mcp",
+        "remove",
+        "pymol",
+        "--scope",
+        "user",
+    ]
+    assert called[2] == called[0]
