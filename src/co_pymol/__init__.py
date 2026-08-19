@@ -1,7 +1,7 @@
 """PyMOL plugin entry point for co-pymol.
 
 Exposes PyMOL's Python API as an MCP server so any MCP client
-(Cursor, Claude Code, Claude Desktop, etc.) can drive PyMOL.
+(Codex, Claude Code, Cursor, etc.) can drive PyMOL.
 """
 
 from __future__ import annotations

@@ -191,11 +191,11 @@ def build_parser() -> argparse.ArgumentParser:
         "proxy",
         help="Run the stdio MCP proxy that survives PyMOL restarts",
         description=(
-            "Run a stdio MCP proxy in the foreground. A client (e.g. Claude Code) "
-            "launches this as a subprocess; it forwards to the co-pymol SSE server "
+            "Run a stdio MCP proxy in the foreground. An MCP client launches this "
+            "as a subprocess; it forwards to the co-pymol SSE server "
             "in PyMOL and survives PyMOL quitting/restarting so the client's "
-            "connection never drops. Configure the client with: "
-            "`claude mcp add pymol -- co-pymol proxy`."
+            "connection never drops. Configure the client's stdio MCP entry to "
+            "run `co-pymol proxy`."
         ),
     )
     add_server_opts(p_proxy)

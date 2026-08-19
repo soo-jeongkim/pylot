@@ -2,7 +2,7 @@
 
 The proxy's entire reason to exist is the *transition* a plain SSE client can't
 survive: PyMOL quits mid-session and comes back as a fresh, uninitialized server,
-and Claude Code must never notice. ``test_metrics``/``test_pipeline`` exercise the
+and the MCP client must never notice. ``test_metrics``/``test_pipeline`` exercise the
 data layers; this file exercises the connection layer — specifically the behaviors
 that only fire on a real restart and that no off-the-shelf bridge gives you:
 
@@ -241,16 +241,17 @@ async def settle(predicate, timeout=5):
             await anyio.sleep(0.005)
 
 
-async def drive(body):
+async def drive(body, initially_connected=True, first_connect_wait=2.0):
     """Run `body(client, fake, proxy)` with a wired proxy/fake/client triad."""
     fake = FakeDownstream()
+    fake.accept = initially_connected
     # Tiny timeouts so the reconnect/backoff loop runs fast in tests.
     proxy = Proxy(
         "memory://test",
         connect=fake.connect,
         backoff_start=0.01,
         backoff_cap=0.05,
-        first_connect_wait=2.0,
+        first_connect_wait=first_connect_wait,
     )
     c2p_send, c2p_recv = anyio.create_memory_object_stream(100)  # client -> proxy
     p2c_send, p2c_recv = anyio.create_memory_object_stream(100)  # proxy -> client
@@ -279,6 +280,30 @@ class TestConnectedParity:
             assert "instance=1" in text(call)
 
         anyio.run(drive, body)
+
+
+class TestColdStart:
+    def test_tools_appear_when_pymol_starts_after_client(self) -> None:
+        async def body(client, fake, proxy):
+            init = await client.initialize()
+            assert init.result["serverInfo"]["name"] == "co-pymol (proxy)"
+
+            tools_down = await client.request("tools/list")
+            assert tool_names(tools_down) == []
+
+            fake.accept = True
+            await settle(lambda: proxy.dn_write is not None)
+            await settle(
+                lambda: any(
+                    note.method == "notifications/tools/list_changed"
+                    for note in client.notifications
+                )
+            )
+
+            tools_up = await client.request("tools/list")
+            assert tool_names(tools_up) == ["echo", "render"]
+
+        anyio.run(drive, body, False, 0.01)
 
 
 class TestReconnectAcrossRestart:

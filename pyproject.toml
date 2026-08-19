@@ -1,7 +1,7 @@
 [project]
 name = "co-pymol"
 version = "0.2.0"
-description = "PyMOL plugin that exposes PyMOL as MCP tools for Claude Code and Claude mobile"
+description = "PyMOL plugin that exposes PyMOL as tools for MCP clients"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"

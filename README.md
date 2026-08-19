@@ -1,8 +1,8 @@
 # co-pymol
 
-*Drive PyMOL in plain English — from Claude Code, Cursor, or your phone.*
+*Drive PyMOL in plain English — from Codex, Claude Code, Cursor, or your phone.*
 
-**`co-pymol`** is a PyMOL plugin that turns PyMOL into an MCP server, so you can drive it in English from any MCP client (Claude Code, Cursor) instead of typing PyMOL commands by hand. On startup it spins up an MCP server — built on the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) — inside PyMOL's own Python process, exposing the `pymol.cmd` API as tools, so you can:
+**`co-pymol`** is a PyMOL plugin that turns PyMOL into an MCP server, so you can drive it in English from any MCP client (Codex, Claude Code, Cursor) instead of typing PyMOL commands by hand. On startup it spins up an MCP server — built on the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) — inside PyMOL's own Python process, exposing the `pymol.cmd` API as tools, so you can:
 
 - **Automate analysis and visualisation** with an agent instead of doing it by hand
 - **Read confidence values** (pLDDT / ipTM / pTM / PAE) on an agent's window via a gemmi-backed metrics layer that parses mmCIF
@@ -10,7 +10,7 @@
 - **Work over SSHFS-mounted cluster paths** as usual
 - **Remote-control from your phone**, since it all runs through Claude Code — plus any other Claude capabilities
 
-An example session in Claude Code / Cursor:
+An example session in Codex / Claude Code / Cursor:
 
 ```
 > Load all the CIF files in /path/to/dir/w/predicted/structures/
@@ -27,7 +27,8 @@ model_3 — ipTM 0.41 (others are 0.7+).
 ## Requirements
 
 - **PyMOL** (a normal desktop install — the plugin installs into PyMOL's bundled Python, not your system Python)
-- **An MCP client** — Claude Code or Cursor
+- **An MCP client** — Codex, Claude Code, or Cursor 3.12.17 or newer. Older
+  Cursor versions may not refresh the tool list when PyMOL starts after Cursor.
 - **macOS** — that's all I've tested on :/ Linux / conda / non-standard installs should work in principle (the recipe is just "install into PyMOL's bundled Python") but these haven't been tested.
 
 ## Installing
@@ -64,12 +65,20 @@ By default the server binds `127.0.0.1:8766` (loopback) — PyMOL and your MCP c
 
 **4. Wire up your MCP client**
 
-Both setups are global — every Cursor window or Claude Code session sees the `pymol` server, no need to `cd` into this repo.
+These setups are global — every Codex, Cursor, or Claude Code session sees the `pymol` server, no need to `cd` into this repo.
 
 There are two ways to connect, and **the proxy is recommended**:
 
 - **Proxy (recommended)** — your client launches a small bundled stdio server (`co-pymol proxy`) that forwards to PyMOL and *survives PyMOL quitting/restarting*, so your session never loses the connection. While PyMOL is down, tool calls return a clear "PyMOL is not connected" message instead of dropping the link; the next call after PyMOL is back just works.
-- **Direct SSE (simpler)** — your client connects straight to PyMOL's SSE server. One less moving part, but the connection drops whenever PyMOL restarts and you have to reconnect by hand.
+- **Direct SSE (simpler, where supported)** — your client connects straight to PyMOL's SSE server. One less moving part, but the connection drops whenever PyMOL restarts and you have to reconnect by hand. Codex's URL transport is Streamable HTTP rather than SSE, so use the proxy with Codex.
+
+*Codex — proxy*
+
+```bash
+codex mcp add pymol -- /Applications/PyMOL.app/Contents/bin/python -m co_pymol proxy
+```
+
+Works from any directory. `codex mcp list` should show `pymol`; inside Codex, `/mcp` shows the active tools. The ChatGPT desktop app, Codex CLI, and Codex IDE extension share this MCP configuration on the same host. See the [official Codex MCP documentation](https://developers.openai.com/codex/mcp/).
 
 *Cursor — proxy*
 
@@ -98,7 +107,7 @@ Works from any directory. `claude mcp list` should show `pymol`. *(Prefer direct
 
 Running PyMOL on a non-default host/port? Pass it through to the proxy: `… -m co_pymol proxy --host <host> --port <port>`.
 
-Once the plumbing is verified, open PyMOL first, *then* a new Cursor window / Claude Code session.
+Once the plumbing is verified, open PyMOL and start a new Codex / Cursor / Claude Code session. The proxy also supports the reverse order: it announces the PyMOL tools when PyMOL connects after the client. This reverse-order flow requires Cursor 3.12.17 or newer.
 
 **5. Confirm the agent is talking to PyMOL**
 
@@ -112,14 +121,14 @@ Already have an older version? How you update depends on how you installed it:
 - **Non-editable install** — `git pull`, then re-run `<pymol-python> -m pip install --user -e .` to pick up the new code.
 - **Installed back when it was `pylot`** — uninstall `pylot`, remove its line from `~/.pymolrc.py`, then do a fresh install.
 
-The change you'll actually feel in 0.2.0 is the **proxy wiring**: re-run `install-config` (Cursor) or re-register Claude Code with `… -m co_pymol proxy`. If your client still points at the older `-m co_pymol.proxy`, it won't start — update it.
+The change you'll actually feel in 0.2.0 is the **proxy wiring**: re-run `install-config` (Cursor), re-register Claude Code with `… -m co_pymol proxy`, or re-run the `codex mcp add` command above. If your client still points at the older `-m co_pymol.proxy`, it won't start — update it.
 
 The full step-by-step, including how to tell which kind of install you have, is in the **"Upgrading an existing install"** section of [`AGENTS.md`](./AGENTS.md) — or just point your coding agent at that file.
 
 ## Experimenting!
 
 1. Open PyMOL (the MCP server auto-starts).
-2. Open Claude Code (`claude` in a terminal) or Cursor with MCP enabled.
+2. Open Codex, Claude Code (`claude` in a terminal), or Cursor with MCP enabled.
 3. Talk to it:
    - "Load all CIF files in `<dir>`, sorted by ipTM"
    - "Color by pLDDT, then render a ray-traced PNG"
@@ -133,6 +142,12 @@ Want sample data? **[Click here](https://500.kim/resources/pizza-and-pymol.zip)*
 Reverses the install steps. There's no `uninstall` subcommand, so the config edits are manual — they're one line each.
 
 **1. Unwire your MCP client**
+
+Codex:
+
+```bash
+codex mcp remove pymol
+```
 
 Cursor: edit `~/.cursor/mcp.json` and delete the `"pymol"` entry under `mcpServers` (leave any other servers intact). Quit Cursor (`Cmd+Q`) and reopen.
 

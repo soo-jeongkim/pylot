@@ -1,20 +1,20 @@
 """Stdio MCP proxy that outlives PyMOL.
 
-Run via the CLI: ``co-pymol proxy`` (see ``cli.py``). Claude Code launches it as a
-subprocess and speaks the MCP **stdio** transport to it. Downstream, the proxy is
-an MCP **SSE** client of the co-pymol server running inside PyMOL (default
+Run via the CLI: ``co-pymol proxy`` (see ``cli.py``). An MCP client launches it as
+a subprocess and speaks the MCP **stdio** transport to it. Downstream, the proxy
+is an MCP **SSE** client of the co-pymol server running inside PyMOL (default
 http://127.0.0.1:8766/sse).
 
-    Claude Code  <-[stdio]->  proxy  <-[SSE :8766]->  co-pymol (in PyMOL)
+    MCP client  <-[stdio]->  proxy  <-[SSE :8766]->  co-pymol (in PyMOL)
 
-The point is to decouple Claude Code's connection lifetime from PyMOL's process
-lifetime. A stdio server has no socket for Claude Code to give up on, so PyMOL
-quitting/restarting never trips Claude Code's connection-retry backoff. The proxy
+The point is to decouple the client's connection lifetime from PyMOL's process
+lifetime. A stdio server has no socket for the client to give up on, so PyMOL
+quitting/restarting never trips the client's connection-retry backoff. The proxy
 absorbs the downstream drop and reconnects on its own loop with no deadline.
 
 What it does that an off-the-shelf bridge does not:
   * Caches the downstream ``initialize`` result and ``tools/list`` response on
-    first connect, and answers Claude Code from cache even while PyMOL is down —
+    first connect, and answers the client from cache even while PyMOL is down —
     so the server keeps *appearing* healthy across a restart.
   * On downstream reconnect, **replays** ``initialize`` +
     ``notifications/initialized`` to the fresh PyMOL server before resuming.
@@ -114,24 +114,27 @@ class Proxy:
         self.backoff_cap = backoff_cap
         self.first_connect_wait = first_connect_wait
 
-        # Upstream (toward Claude Code) write stream — set once stdio is up.
+        # Upstream (toward the MCP client) write stream — set once stdio is up.
         self.up_write = None
 
         # Downstream (toward PyMOL) write stream — present only while connected.
         self.dn_write = None
 
         # Cached downstream handshake artifacts. Tools are static, so once captured
-        # they answer Claude Code forever, including while PyMOL is down.
+        # they answer the MCP client forever, including while PyMOL is down.
         self.cached_init_result: dict | None = None
         self.cached_tools_result: dict | None = None
         self.tools_signature: str | None = None
+        # True after a cold-start tools/list had to return an empty list. The first
+        # real downstream handshake must then notify the client to fetch again.
+        self.sent_empty_tools = False
 
         # Set the first time the cache is populated; lets initialize/tools/list
         # block briefly on a cold start until the first connect lands.
         self.cache_ready = anyio.Event()
 
         # Protocol version the *client* negotiated, reused when we (re)handshake
-        # downstream so the fresh PyMOL server agrees with Claude Code.
+        # downstream so the fresh PyMOL server agrees with the MCP client.
         self.client_protocol = DEFAULT_PROTOCOL
 
         # Client request ids forwarded downstream and not yet answered. On a
@@ -146,7 +149,7 @@ class Proxy:
             return
         try:
             await self.up_write.send(SessionMessage(message=msg))
-        except Exception as exc:  # Claude Code went away mid-write
+        except Exception as exc:  # MCP client went away mid-write
             log(f"upstream send failed: {exc!r}")
 
     # -- lifecycle ------------------------------------------------------------
@@ -163,7 +166,7 @@ class Proxy:
         self.up_write = up_write
         async with anyio.create_task_group() as tg:
             tg.start_soon(self.downstream_manager)
-            # Upstream loop owns the lifetime: when stdin closes, Claude Code is
+            # Upstream loop owns the lifetime: when stdin closes, the MCP client is
             # gone, so tear everything down.
             await self.upstream_loop(up_read)
             if arm_watchdog:
@@ -237,9 +240,12 @@ class Proxy:
         changed = self.update_tools_cache(tools_result)
         if not self.cache_ready.is_set():
             self.cache_ready.set()
-        if changed:
-            # Tool set shifted between PyMOL instances — tell Claude Code to refetch.
-            log("tools/list changed across reconnect; notifying client")
+        notify_client = changed or self.sent_empty_tools
+        self.sent_empty_tools = False
+        if notify_client:
+            # The tool set changed, or a cold-start request saw no tools before
+            # PyMOL connected. Tell the MCP client to fetch the real list.
+            log("tools/list is now available or changed; notifying client")
             await self.send_up(
                 JSONRPCMessage(
                     JSONRPCNotification(
@@ -277,7 +283,7 @@ class Proxy:
         raise RuntimeError("downstream stream ended during handshake")
 
     async def downstream_pump(self, dn_read) -> None:
-        """Forward everything from PyMOL to Claude Code until the stream ends."""
+        """Forward everything from PyMOL to the MCP client until the stream ends."""
         async for item in dn_read:
             if isinstance(item, Exception):
                 log(f"downstream read error: {item!r}")
@@ -411,7 +417,11 @@ class Proxy:
 
     async def handle_tools_list(self, req_id) -> None:
         await self.await_cache(self.first_connect_wait)
-        result = self.cached_tools_result or {"tools": []}
+        if self.cached_tools_result is None:
+            self.sent_empty_tools = True
+            result = {"tools": []}
+        else:
+            result = self.cached_tools_result
         await self.send_up(
             JSONRPCMessage(JSONRPCResponse(jsonrpc="2.0", id=req_id, result=result))
         )

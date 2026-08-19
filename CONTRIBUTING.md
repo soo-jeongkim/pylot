@@ -47,6 +47,6 @@ Lint/format is `ruff` (config in `pyproject.toml`).
 Open a GitHub issue with:
 
 - PyMOL version (`pymol -c -q -k -e 'print(cmd.get_version())'`, or check the splash screen)
-- MCP client (Claude Code / Cursor / other) and its version
+- MCP client (Codex / Claude Code / Cursor / other) and its version
 - OS and PyMOL install path
 - The `co-pymol: MCP server running on...` line from the PyMOL console — or a note that it's missing
