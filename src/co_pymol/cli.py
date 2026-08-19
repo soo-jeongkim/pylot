@@ -4,9 +4,8 @@ Subcommands:
     setup <client>     Install the PyMOL hook and configure one MCP client
     proxy              Run the stdio MCP proxy that survives PyMOL restarts
 
-The pre-setup ``install-hook`` and ``install-config`` commands are still
-accepted as hidden compatibility aliases, but are intentionally omitted from
-the public help. ``install-codex`` was never released and is not retained.
+The legacy ``install-hook`` and ``install-config`` commands remain accepted as
+hidden compatibility aliases but are omitted from the public help.
 
 The CLI is pure stdlib — it does not import pymol or mcp — so it can run
 under any Python interpreter, even if the plugin itself was installed into
