@@ -75,10 +75,10 @@ There are two ways to connect, and **the proxy is recommended**:
 *Codex — proxy*
 
 ```bash
-codex mcp add pymol -- /Applications/PyMOL.app/Contents/bin/python -m co_pymol proxy
+/Applications/PyMOL.app/Contents/bin/python -m co_pymol install-codex
 ```
 
-Works from any directory. `codex mcp list` should show `pymol`; inside Codex, `/mcp` shows the active tools. The ChatGPT desktop app, Codex CLI, and Codex IDE extension share this MCP configuration on the same host. See the [official Codex MCP documentation](https://developers.openai.com/codex/mcp/).
+This registers co-pymol with an existing Codex installation; it does not install Codex itself. It works from any directory and is safe to re-run. `codex mcp list` should show `pymol`; inside Codex, `/mcp` shows the active tools. The ChatGPT desktop app, Codex CLI, and Codex IDE extension share this MCP configuration on the same host. See the [official Codex MCP documentation](https://developers.openai.com/codex/mcp/).
 
 *Cursor — proxy*
 
@@ -121,7 +121,7 @@ Already have an older version? How you update depends on how you installed it:
 - **Non-editable install** — `git pull`, then re-run `<pymol-python> -m pip install --user -e .` to pick up the new code.
 - **Installed back when it was `pylot`** — uninstall `pylot`, remove its line from `~/.pymolrc.py`, then do a fresh install.
 
-The change you'll actually feel in 0.2.0 is the **proxy wiring**: re-run `install-config` (Cursor), re-register Claude Code with `… -m co_pymol proxy`, or re-run the `codex mcp add` command above. If your client still points at the older `-m co_pymol.proxy`, it won't start — update it.
+The change you'll actually feel in 0.2.0 is the **proxy wiring**: re-run `install-config` (Cursor), re-register Claude Code with `… -m co_pymol proxy`, or re-run `install-codex`. If your client still points at the older `-m co_pymol.proxy`, it won't start — update it.
 
 The full step-by-step, including how to tell which kind of install you have, is in the **"Upgrading an existing install"** section of [`AGENTS.md`](./AGENTS.md) — or just point your coding agent at that file.
 
@@ -161,7 +161,7 @@ claude mcp remove pymol --scope user
 
 Delete these two lines from `~/.pymolrc.py`:
 
-```python
+```text
 # co-pymol: auto-start MCP server on PyMOL launch
 from co_pymol import __init_plugin__; __init_plugin__()
 ```

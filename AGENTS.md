@@ -121,9 +121,9 @@ Ask which client (or check the environment). There are two transports — **defa
 
 - **Codex (proxy):**
   ```bash
-  codex mcp add pymol -- $PYMOL_PYTHON -m co_pymol proxy
+  $PYMOL_PYTHON -m co_pymol install-codex
   ```
-  Verify with `codex mcp list`; inside Codex, `/mcp` shows the active servers and tools. This configuration is shared by the ChatGPT desktop app, Codex CLI, and Codex IDE extension on the same host. Codex's URL transport is Streamable HTTP rather than SSE, so do not point `codex mcp add --url` at co-pymol's `/sse` endpoint.
+  This registers co-pymol with an existing Codex installation; it does not install Codex itself. Verify with `codex mcp list`; inside Codex, `/mcp` shows the active servers and tools. This configuration is shared by the ChatGPT desktop app, Codex CLI, and Codex IDE extension on the same host. Codex's URL transport is Streamable HTTP rather than SSE, so do not point `codex mcp add --url` at co-pymol's `/sse` endpoint.
 
 - **Claude Code (proxy, recommended):**
   ```bash
@@ -189,7 +189,7 @@ $PYMOL_PYTHON -m pip install --user -e .   # also switches to editable, so futur
 
 - Cursor: re-run `$PYMOL_PYTHON -m co_pymol.cli install-config` (now writes the proxy entry), then fully quit + reopen Cursor.
 - Claude Code: `claude mcp remove pymol -s user`, then `claude mcp add --scope user pymol -- $PYMOL_PYTHON -m co_pymol proxy`. (`claude mcp get pymol` shows the current command — if its Args read `-m co_pymol.proxy`, it's stale.)
-- Codex: re-run `codex mcp add pymol -- $PYMOL_PYTHON -m co_pymol proxy`. (`codex mcp get pymol --json` shows the current command and arguments.)
+- Codex: re-run `$PYMOL_PYTHON -m co_pymol install-codex`. (`codex mcp get pymol --json` shows the current command and arguments.)
 
 **5. Tell the user to restart PyMOL** so the plugin loads the new code (a full quit + relaunch).
 

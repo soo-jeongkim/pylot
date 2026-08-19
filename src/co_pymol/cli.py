@@ -2,6 +2,7 @@
 
 Subcommands:
     install-hook       Append the plugin startup line to ~/.pymolrc.py
+    install-codex      Register the proxy in Codex's global MCP configuration
     install-config     Write Cursor MCP config (global by default)
     proxy              Run the stdio MCP proxy that survives PyMOL restarts
 
@@ -14,6 +15,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -105,11 +108,49 @@ def cmd_install_hook(args: argparse.Namespace) -> None:
     print(write_pymolrc_hook(Path.home() / ".pymolrc.py"))
 
 
+def install_codex_mcp(host: str, port: int) -> str:
+    """Register the restart-surviving proxy as Codex's global `pymol` MCP.
+
+    Codex owns its TOML configuration format, so use its supported CLI instead
+    of editing ``~/.codex/config.toml`` directly. ``codex mcp add`` is an upsert,
+    which makes this safe to re-run when the interpreter, host, or port changes.
+    """
+    codex = shutil.which("codex")
+    if codex is None:
+        raise OSError(
+            "Codex CLI was not found on PATH. Install Codex first, then re-run "
+            "install-codex."
+        )
+
+    entry = pymol_server_entry(host, port, use_sse=False)
+    command = [
+        codex,
+        "mcp",
+        "add",
+        "pymol",
+        "--",
+        entry["command"],
+        *entry["args"],
+    ]
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        suffix = f": {detail}" if detail else ""
+        raise OSError(f"`codex mcp add` failed{suffix}")
+
+    return result.stdout.strip() or "Configured Codex MCP server 'pymol'."
+
+
+def cmd_install_codex(args: argparse.Namespace) -> None:
+    print(install_codex_mcp(args.host, args.port))
+    print("Start a new Codex session to load the pymol tools.")
+
+
 def cmd_proxy(args: argparse.Namespace) -> int:
     # Deferred import: proxy.py pulls in mcp/anyio, which (like pymol) only exist
     # where the package's deps are installed. Importing it lazily here keeps the
-    # rest of the CLI (install-hook/install-config) runnable under a stdlib-only
-    # Python that just has the package source on its path.
+    # rest of the CLI (install-hook/install-codex/install-config) runnable under
+    # a stdlib-only Python that just has the package source on its path.
     from co_pymol.proxy import run_proxy
 
     return run_proxy(args.host, args.port)
@@ -158,6 +199,18 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_hook.set_defaults(func=cmd_install_hook)
+
+    p_codex = sub.add_parser(
+        "install-codex",
+        help="Register the proxy in Codex's global MCP configuration",
+        description=(
+            "Register a global Codex MCP server named 'pymol'. The entry launches "
+            "the restart-surviving stdio proxy under this Python interpreter. "
+            "Safe to re-run; Codex updates the existing entry."
+        ),
+    )
+    add_server_opts(p_codex)
+    p_codex.set_defaults(func=cmd_install_codex)
 
     p_install = sub.add_parser(
         "install-config",

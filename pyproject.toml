@@ -10,6 +10,9 @@ dependencies = [
     "anyio>=4.0",
     "numpy>=1.24",
     "gemmi>=0.6",
+    # PyMOL's Intel macOS bundle lacks Python headers, so cryptography must use
+    # the last release line that supplies a compatible prebuilt wheel.
+    "cryptography<46; sys_platform == 'darwin' and platform_machine == 'x86_64'",
 ]
 
 [project.optional-dependencies]
