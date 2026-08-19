@@ -2,10 +2,11 @@
 
 Subcommands:
     setup <client>     Install the PyMOL hook and configure one MCP client
-    install-hook       Append the plugin startup line to ~/.pymolrc.py
-    install-codex      Register the proxy in Codex's global MCP configuration
-    install-config     Write Cursor MCP config (global by default)
     proxy              Run the stdio MCP proxy that survives PyMOL restarts
+
+The pre-setup ``install-hook`` and ``install-config`` commands are still
+accepted as hidden compatibility aliases, but are intentionally omitted from
+the public help. ``install-codex`` was never released and is not retained.
 
 The CLI is pure stdlib — it does not import pymol or mcp — so it can run
 under any Python interpreter, even if the plugin itself was installed into
@@ -120,7 +121,7 @@ def install_codex_mcp(host: str, port: int) -> str:
     if codex is None:
         raise OSError(
             "Codex CLI was not found on PATH. Install Codex first, then re-run "
-            "install-codex."
+            "`co-pymol setup codex`."
         )
 
     entry = pymol_server_entry(host, port, use_sse=False)
@@ -225,11 +226,6 @@ def cmd_setup(args: argparse.Namespace) -> None:
     print(f"Restart PyMOL. {restart} to load the pymol tools.")
 
 
-def cmd_install_codex(args: argparse.Namespace) -> None:
-    print(install_codex_mcp(args.host, args.port))
-    print("Start a new Codex session to load the pymol tools.")
-
-
 def cmd_proxy(args: argparse.Namespace) -> int:
     # Deferred import: proxy.py pulls in mcp/anyio, which (like pymol) only exist
     # where the package's deps are installed. Importing it lazily here keeps the
@@ -279,7 +275,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="co-pymol",
         description="co-pymol setup and diagnostics",
     )
-    sub = parser.add_subparsers(dest="cmd", required=True)
+    sub = parser.add_subparsers(dest="cmd", required=True, metavar="{setup,proxy}")
 
     p_setup = sub.add_parser(
         "setup",
@@ -303,57 +299,6 @@ def build_parser() -> argparse.ArgumentParser:
         add_server_opts(p_client)
         p_client.set_defaults(func=cmd_setup)
 
-    p_hook = sub.add_parser(
-        "install-hook",
-        help="Append plugin startup line to ~/.pymolrc.py so PyMOL loads it on launch",
-        description=(
-            "Append a one-liner to ~/.pymolrc.py that starts the MCP server when "
-            "PyMOL launches. Safe to re-run — does nothing if the line is already "
-            "present."
-        ),
-    )
-    p_hook.set_defaults(func=cmd_install_hook)
-
-    p_codex = sub.add_parser(
-        "install-codex",
-        help="Register the proxy in Codex's global MCP configuration",
-        description=(
-            "Register a global Codex MCP server named 'pymol'. The entry launches "
-            "the restart-surviving stdio proxy under this Python interpreter. "
-            "Safe to re-run; Codex updates the existing entry."
-        ),
-    )
-    add_server_opts(p_codex)
-    p_codex.set_defaults(func=cmd_install_codex)
-
-    p_install = sub.add_parser(
-        "install-config",
-        help="Write Cursor MCP config so the pymol server is available everywhere",
-        description=(
-            "Write Cursor MCP config (~/.cursor/mcp.json by default; --project "
-            "writes ./.cursor/mcp.json). The pymol entry launches the "
-            "restart-surviving stdio proxy by default; use --sse for the direct "
-            "SSE url form. Other mcpServers entries are preserved."
-        ),
-    )
-    p_install.add_argument(
-        "--project",
-        action="store_true",
-        help="Write project-level config (./.cursor/mcp.json) instead of global",
-    )
-    p_install.add_argument(
-        "--project-dir",
-        default=".",
-        help="Project root for --project (default: current directory)",
-    )
-    p_install.add_argument(
-        "--sse",
-        action="store_true",
-        help="Write the direct SSE url entry instead of the restart-surviving proxy",
-    )
-    add_server_opts(p_install)
-    p_install.set_defaults(func=cmd_install_config)
-
     p_proxy = sub.add_parser(
         "proxy",
         help="Run the stdio MCP proxy that survives PyMOL restarts",
@@ -371,8 +316,55 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def build_legacy_parser(command: str) -> argparse.ArgumentParser:
+    """Build a parser for a pre-setup compatibility command.
+
+    These commands remain callable by old scripts but stay out of the public
+    parser, so ``co-pymol --help`` presents only the supported setup interface.
+    """
+    parser = argparse.ArgumentParser(prog=f"co-pymol {command}")
+    if command == "install-hook":
+        parser.description = (
+            "Compatibility command: append the PyMOL startup hook. New installs "
+            "should use `co-pymol setup <client>`."
+        )
+        parser.set_defaults(func=cmd_install_hook)
+        return parser
+
+    if command != "install-config":  # defensive; main filters this already
+        raise ValueError(f"Unknown compatibility command: {command}")
+
+    parser.description = (
+        "Compatibility command: write Cursor MCP configuration. New installs "
+        "should use `co-pymol setup cursor`."
+    )
+    parser.add_argument(
+        "--project",
+        action="store_true",
+        help="Write project-level config (./.cursor/mcp.json) instead of global",
+    )
+    parser.add_argument(
+        "--project-dir",
+        default=".",
+        help="Project root for --project (default: current directory)",
+    )
+    parser.add_argument(
+        "--sse",
+        action="store_true",
+        help="Write the direct SSE url entry instead of the restart-surviving proxy",
+    )
+    add_server_opts(parser)
+    parser.set_defaults(func=cmd_install_config)
+    return parser
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if raw_argv and raw_argv[0] in {"install-hook", "install-config"}:
+        command = raw_argv.pop(0)
+        args = build_legacy_parser(command).parse_args(raw_argv)
+    else:
+        args = build_parser().parse_args(raw_argv)
     try:
         # Subcommands return an exit code (proxy) or None (setup commands).
         return args.func(args) or 0

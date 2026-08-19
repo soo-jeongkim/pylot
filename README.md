@@ -78,12 +78,22 @@ instead, but their connections drop whenever PyMOL restarts. To switch after
 normal setup, use:
 
 ```bash
-# Cursor: replace its proxy entry with the direct SSE URL
-/Applications/PyMOL.app/Contents/bin/python -m co_pymol install-config --sse
-
 # Claude Code: replace its user-scoped proxy entry with the direct SSE URL
 claude mcp remove pymol --scope user
 claude mcp add --transport sse --scope user pymol http://127.0.0.1:8766/sse
+```
+
+For Cursor, edit only its `pymol` entry in `~/.cursor/mcp.json`, preserving any
+other servers:
+
+```json
+{
+  "mcpServers": {
+    "pymol": {
+      "url": "http://127.0.0.1:8766/sse"
+    }
+  }
+}
 ```
 
 The `--host` and `--port` options on setup commands change where the client-side

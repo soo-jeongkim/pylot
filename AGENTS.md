@@ -139,19 +139,29 @@ For direct SSE with Cursor or Claude Code, run the normal setup first so the
 PyMOL hook is present, then replace only the selected client's proxy entry:
 
 ```bash
-# Cursor
-$PYMOL_PYTHON -m co_pymol install-config --sse
-
 # Claude Code
 claude mcp remove pymol --scope user
 claude mcp add --transport sse --scope user pymol http://127.0.0.1:8766/sse
 ```
 
+For Cursor, replace only the `pymol` entry under `mcpServers` in
+`~/.cursor/mcp.json`, preserving other servers:
+
+```json
+{
+  "mcpServers": {
+    "pymol": {
+      "url": "http://127.0.0.1:8766/sse"
+    }
+  }
+}
+```
+
 The `--host` and `--port` setup options configure the client-side proxy target
 only. They do not change the automatic PyMOL hook, which always starts the
-server at `127.0.0.1:8766`. Do not pass them during a normal installation. The
-legacy `install-hook`, `install-config`, and `install-codex` commands remain
-available as single-operation helpers, but use `setup <client>` normally.
+server at `127.0.0.1:8766`. Do not pass them during a normal installation.
+Older `install-hook` and `install-config` invocations remain accepted as hidden
+compatibility aliases; `install-codex` has been replaced by `setup codex`.
 
 The proxy can start before PyMOL. It returns an empty tool list after a short bounded wait, then sends `notifications/tools/list_changed` so the client discovers the real tools when PyMOL appears. Require Cursor 3.12.17 or newer for this reverse-order flow; older Cursor versions may not refresh the tool list notification.
 
@@ -253,7 +263,6 @@ that client.
 
 - Don't `pip install co-pymol` into the system Python or a venv — the plugin will load but PyMOL won't see it.
 - Don't edit `~/.pymolrc.py` by hand; normal `setup <client>` installs the hook.
-  Use `install-hook` only when repairing or configuring the hook separately.
 - Don't restart PyMOL yourself — the user has unsaved session state. Ask them to do it.
 - Don't add `pymol` as a pip dependency. It's not on PyPI in the form this plugin needs; the user installs PyMOL.app separately.
 
