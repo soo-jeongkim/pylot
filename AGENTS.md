@@ -107,47 +107,39 @@ Sanity check it: `$PYMOL_PYTHON -c 'import pymol; print(pymol.__file__)'` should
 $PYMOL_PYTHON -m pip install --user -e .
 ```
 
-**2. Hook the plugin into PyMOL startup**
+**2. Set up exactly one MCP client**
+
+Ask which client the user actually uses, then run only its setup command:
 
 ```bash
-$PYMOL_PYTHON -m co_pymol.cli install-hook
+$PYMOL_PYTHON -m co_pymol setup codex
+$PYMOL_PYTHON -m co_pymol setup cursor
+$PYMOL_PYTHON -m co_pymol setup claude
 ```
 
-Appends two lines (a sentinel comment + the import) to `~/.pymolrc.py` so PyMOL auto-loads the plugin. Safe to run against an existing `~/.pymolrc.py` — it appends rather than overwrites, and is a no-op if the line is already present. Do not edit the file by hand.
+Do not run all three. Each command installs the shared startup hook in
+`~/.pymolrc.py` and configures only the selected client. It does not inspect or
+require either of the other clients. The Codex and Claude choices require the
+corresponding CLI on `PATH`; Cursor is configured through
+`~/.cursor/mcp.json`. These setup commands configure an existing client — they
+do not install Codex, Cursor, or Claude Code.
 
-**3. Wire up the MCP client the user is using**
+All three default to the bundled stdio proxy, which forwards to PyMOL's SSE
+server and survives PyMOL restarts. Use the user's `$PYMOL_PYTHON` path as the
+proxy command so it has the package's dependencies. Codex's URL transport is
+Streamable HTTP rather than SSE, so Codex must use the proxy. Direct SSE remains
+available for Cursor through `install-config --sse` and for Claude Code through
+`claude mcp add --transport sse --scope user pymol
+http://127.0.0.1:8766/sse`.
 
-Ask which client (or check the environment). There are two transports — **default to the proxy**: the client launches `co-pymol proxy` (a bundled stdio MCP server) which forwards to PyMOL's SSE server and *survives PyMOL restarts*, so the client connection never drops. Direct SSE is simpler where the client supports it, but the connection breaks whenever PyMOL restarts. Use the user's `$PYMOL_PYTHON` path as the proxy command so it has the package's deps.
-
-- **Codex (proxy):**
-  ```bash
-  $PYMOL_PYTHON -m co_pymol install-codex
-  ```
-  This registers co-pymol with an existing Codex installation; it does not install Codex itself. Verify with `codex mcp list`; inside Codex, `/mcp` shows the active servers and tools. This configuration is shared by the ChatGPT desktop app, Codex CLI, and Codex IDE extension on the same host. Codex's URL transport is Streamable HTTP rather than SSE, so do not point `codex mcp add --url` at co-pymol's `/sse` endpoint.
-
-- **Claude Code (proxy, recommended):**
-  ```bash
-  claude mcp add --scope user pymol -- $PYMOL_PYTHON -m co_pymol proxy
-  ```
-  Verify with `claude mcp list`. *(Direct SSE alternative: `claude mcp add --transport sse --scope user pymol http://127.0.0.1:8766/sse`.)*
-
-- **Cursor (proxy, recommended):**
-  Edit `~/.cursor/mcp.json` so the `pymol` entry launches the proxy (preserve any other servers):
-  ```json
-  {
-    "mcpServers": {
-      "pymol": {
-        "command": "/Applications/PyMOL.app/Contents/bin/python",
-        "args": ["-m", "co_pymol", "proxy"]
-      }
-    }
-  }
-  ```
-  Use the user's actual `$PYMOL_PYTHON` as `command`. Tell the user to fully quit Cursor (`Cmd+Q`) and reopen. *(Direct SSE alternative: `$PYMOL_PYTHON -m co_pymol.cli install-config`, which writes the `{"url": …}` form.)*
+To use a non-default endpoint, append `--host <host> --port <port>` to the
+selected setup command. The legacy `install-hook`, `install-config`, and
+`install-codex` commands remain available as single-operation helpers, but use
+`setup <client>` for a normal installation.
 
 The proxy can start before PyMOL. It returns an empty tool list after a short bounded wait, then sends `notifications/tools/list_changed` so the client discovers the real tools when PyMOL appears. Require Cursor 3.12.17 or newer for this reverse-order flow; older Cursor versions may not refresh the tool list notification.
 
-**4. Tell the user to restart PyMOL**
+**3. Tell the user to restart PyMOL and the selected client**
 
 You can't do this for them. They need a full quit + relaunch (not just closing the window). On success the PyMOL console prints:
 
@@ -187,11 +179,11 @@ $PYMOL_PYTHON -m pip install --user -e .   # also switches to editable, so futur
 
 **4. Re-point the MCP client at the proxy.** This is the main user-visible 0.2.0 change: the recommended wiring moved from direct SSE to the proxy, launched as `-m co_pymol proxy` (package + subcommand). If the client still points at a direct SSE url, or the interim `-m co_pymol.proxy` form (which no longer starts a server), update it:
 
-- Cursor: re-run `$PYMOL_PYTHON -m co_pymol.cli install-config` (now writes the proxy entry), then fully quit + reopen Cursor.
-- Claude Code: `claude mcp remove pymol -s user`, then `claude mcp add --scope user pymol -- $PYMOL_PYTHON -m co_pymol proxy`. (`claude mcp get pymol` shows the current command — if its Args read `-m co_pymol.proxy`, it's stale.)
-- Codex: re-run `$PYMOL_PYTHON -m co_pymol install-codex`. (`codex mcp get pymol --json` shows the current command and arguments.)
+- Cursor: re-run `$PYMOL_PYTHON -m co_pymol setup cursor`, then fully quit and reopen Cursor.
+- Claude Code: re-run `$PYMOL_PYTHON -m co_pymol setup claude`. (`claude mcp get pymol` shows the current command — if its Args read `-m co_pymol.proxy`, it's stale.)
+- Codex: re-run `$PYMOL_PYTHON -m co_pymol setup codex`. (`codex mcp get pymol --json` shows the current command and arguments.)
 
-**5. Tell the user to restart PyMOL** so the plugin loads the new code (a full quit + relaunch).
+**5. Tell the user to restart PyMOL and the selected client** so they load the new code and MCP configuration.
 
 **Pre-rename (`pylot`) installs.** Older installs used the `pylot` package name. Migrate to a clean co-pymol install: `$PYMOL_PYTHON -m pip uninstall pylot`, delete the old `pylot` startup line from `~/.pymolrc.py`, then follow the install steps above from step 1.
 

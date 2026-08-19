@@ -43,15 +43,44 @@ cd co-pymol
 /Applications/PyMOL.app/Contents/bin/python -m pip install --user -e .
 ```
 
-**2. Hook the plugin into PyMOL startup**
+**2. Set up the MCP client you use**
+
+Choose exactly one:
 
 ```bash
-/Applications/PyMOL.app/Contents/bin/python -m co_pymol.cli install-hook
+# Codex
+/Applications/PyMOL.app/Contents/bin/python -m co_pymol setup codex
+
+# Cursor
+/Applications/PyMOL.app/Contents/bin/python -m co_pymol setup cursor
+
+# Claude Code
+/Applications/PyMOL.app/Contents/bin/python -m co_pymol setup claude
 ```
 
-Appends one line to `~/.pymolrc.py` so PyMOL loads the plugin on launch. Safe to re-run.
+Each command installs the shared PyMOL startup hook and configures only the
+selected client. The other clients do not need to be installed. The Codex and
+Claude choices require their existing CLI on `PATH`; the Cursor choice writes
+`~/.cursor/mcp.json` directly. These commands configure co-pymol for a client —
+they do not install Codex, Cursor, or Claude Code themselves. All are safe to
+re-run.
 
-**3. Restart PyMOL**
+The client setup is global, so `pymol` is available from every session and
+there is no need to `cd` into this repo. It uses the recommended bundled stdio
+proxy (`co-pymol proxy`), which forwards to PyMOL and survives PyMOL
+quitting/restarting. While PyMOL is down, tool calls return a clear message;
+when PyMOL reconnects, the client refreshes the real tool list.
+
+Codex's URL transport is Streamable HTTP rather than SSE, so Codex must use the
+proxy. Cursor and Claude Code can use direct SSE instead, but their connections
+drop whenever PyMOL restarts. For that advanced setup, use `install-config
+--sse` for Cursor or `claude mcp add --transport sse --scope user pymol
+http://127.0.0.1:8766/sse` for Claude Code.
+
+Running PyMOL on a non-default host or port? Add `--host <host> --port <port>`
+after the selected client name.
+
+**3. Restart PyMOL and your selected client**
 
 The PyMOL console should print:
 
@@ -61,57 +90,16 @@ co-pymol: MCP server running on http://127.0.0.1:8766/sse
 
 If you don't see that line, `~/.pymolrc.py` isn't being loaded. The file must be in your home directory (`echo $HOME` to check), and you need a full PyMOL quit + relaunch, not just a window close.
 
-By default the server binds `127.0.0.1:8766` (loopback) — PyMOL and your MCP client must run on the same machine. To override, run `start_mcp` from the PyMOL command line: `start_mcp 9000` for a different port, or `start_mcp 8766, 0.0.0.0` to also accept connections from other machines. If you change either, point the client at the matching URL (e.g. `install-config --host <host> --port <port>`).
+By default the server binds `127.0.0.1:8766` (loopback), so PyMOL and the MCP
+client must run on the same machine. The proxy supports starting the client
+before PyMOL; that reverse-order flow requires Cursor 3.12.17 or newer.
 
-**4. Wire up your MCP client**
+**4. Confirm the agent is talking to PyMOL**
 
-These setups are global — every Codex, Cursor, or Claude Code session sees the `pymol` server, no need to `cd` into this repo.
-
-There are two ways to connect, and **the proxy is recommended**:
-
-- **Proxy (recommended)** — your client launches a small bundled stdio server (`co-pymol proxy`) that forwards to PyMOL and *survives PyMOL quitting/restarting*, so your session never loses the connection. While PyMOL is down, tool calls return a clear "PyMOL is not connected" message instead of dropping the link; the next call after PyMOL is back just works.
-- **Direct SSE (simpler, where supported)** — your client connects straight to PyMOL's SSE server. One less moving part, but the connection drops whenever PyMOL restarts and you have to reconnect by hand. Codex's URL transport is Streamable HTTP rather than SSE, so use the proxy with Codex.
-
-*Codex — proxy*
-
-```bash
-/Applications/PyMOL.app/Contents/bin/python -m co_pymol install-codex
-```
-
-This registers co-pymol with an existing Codex installation; it does not install Codex itself. It works from any directory and is safe to re-run. `codex mcp list` should show `pymol`; inside Codex, `/mcp` shows the active tools. The ChatGPT desktop app, Codex CLI, and Codex IDE extension share this MCP configuration on the same host. See the [official Codex MCP documentation](https://developers.openai.com/codex/mcp/).
-
-*Cursor — proxy*
-
-Edit `~/.cursor/mcp.json` so the `pymol` entry is:
-
-```json
-{
-  "mcpServers": {
-    "pymol": {
-      "command": "/Applications/PyMOL.app/Contents/bin/python",
-      "args": ["-m", "co_pymol", "proxy"]
-    }
-  }
-}
-```
-
-Fully quit Cursor (`Cmd+Q`, not just close the window) and reopen; verify under Settings → Cursor Settings → MCP that `pymol` is listed. *(Prefer direct SSE? Run `/Applications/PyMOL.app/Contents/bin/python -m co_pymol.cli install-config`, which writes the `{"url": …}` form instead.)*
-
-*Claude Code — proxy*
-
-```bash
-claude mcp add --scope user pymol -- /Applications/PyMOL.app/Contents/bin/python -m co_pymol proxy
-```
-
-Works from any directory. `claude mcp list` should show `pymol`. *(Prefer direct SSE? `claude mcp add --transport sse --scope user pymol http://127.0.0.1:8766/sse`.)*
-
-Running PyMOL on a non-default host/port? Pass it through to the proxy: `… -m co_pymol proxy --host <host> --port <port>`.
-
-Once the plumbing is verified, open PyMOL and start a new Codex / Cursor / Claude Code session. The proxy also supports the reverse order: it announces the PyMOL tools when PyMOL connects after the client. This reverse-order flow requires Cursor 3.12.17 or newer.
-
-**5. Confirm the agent is talking to PyMOL**
-
-Ask the agent something like *"are you connected to PyMOL? what version is loaded?"* — if it calls a `pymol` tool (e.g. `get_version`) and reports back a real answer, you're wired up. If it says it can't see PyMOL or doesn't have any `pymol` tools, the MCP client isn't actually connected — re-check step 4 and make sure you opened a *new* session after wiring it up.
+Ask the agent something like *"are you connected to PyMOL? what version is
+loaded?"* — if it calls a `pymol` tool (e.g. `get_version`) and reports a real
+answer, you're wired up. If it cannot see any `pymol` tools, re-check step 2 and
+make sure you opened a new client session after setup.
 
 ## Upgrading
 
@@ -121,7 +109,10 @@ Already have an older version? How you update depends on how you installed it:
 - **Non-editable install** — `git pull`, then re-run `<pymol-python> -m pip install --user -e .` to pick up the new code.
 - **Installed back when it was `pylot`** — uninstall `pylot`, remove its line from `~/.pymolrc.py`, then do a fresh install.
 
-The change you'll actually feel in 0.2.0 is the **proxy wiring**: re-run `install-config` (Cursor), re-register Claude Code with `… -m co_pymol proxy`, or re-run `install-codex`. If your client still points at the older `-m co_pymol.proxy`, it won't start — update it.
+The change you'll actually feel in 0.2.0 is the **proxy wiring**: re-run
+`co-pymol setup codex`, `co-pymol setup cursor`, or `co-pymol setup claude` for
+the client you use. If your client still points at the older `-m
+co_pymol.proxy`, it won't start — update it.
 
 The full step-by-step, including how to tell which kind of install you have, is in the **"Upgrading an existing install"** section of [`AGENTS.md`](./AGENTS.md) — or just point your coding agent at that file.
 

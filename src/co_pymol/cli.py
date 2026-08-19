@@ -1,6 +1,7 @@
 """CLI for co-pymol setup and diagnostics.
 
 Subcommands:
+    setup <client>     Install the PyMOL hook and configure one MCP client
     install-hook       Append the plugin startup line to ~/.pymolrc.py
     install-codex      Register the proxy in Codex's global MCP configuration
     install-config     Write Cursor MCP config (global by default)
@@ -141,6 +142,89 @@ def install_codex_mcp(host: str, port: int) -> str:
     return result.stdout.strip() or "Configured Codex MCP server 'pymol'."
 
 
+def install_claude_mcp(host: str, port: int) -> str:
+    """Register the restart-surviving proxy as Claude Code's user MCP."""
+    claude = shutil.which("claude")
+    if claude is None:
+        raise OSError(
+            "Claude Code CLI was not found on PATH. Install Claude Code first, "
+            "then re-run `co-pymol setup claude`."
+        )
+
+    entry = pymol_server_entry(host, port, use_sse=False)
+    command = [
+        claude,
+        "mcp",
+        "add",
+        "--scope",
+        "user",
+        "pymol",
+        "--",
+        entry["command"],
+        *entry["args"],
+    ]
+    result = subprocess.run(command, capture_output=True, text=True)
+
+    # Unlike `codex mcp add`, Claude Code does not update an existing entry.
+    # Remove only its user-scoped `pymol` entry and retry; other clients and
+    # other Claude MCP servers are untouched.
+    detail = (result.stderr or result.stdout).strip()
+    if result.returncode != 0 and "already exists" in detail.lower():
+        remove = subprocess.run(
+            [claude, "mcp", "remove", "pymol", "--scope", "user"],
+            capture_output=True,
+            text=True,
+        )
+        if remove.returncode != 0:
+            remove_detail = (remove.stderr or remove.stdout).strip()
+            suffix = f": {remove_detail}" if remove_detail else ""
+            raise OSError(f"`claude mcp remove` failed{suffix}")
+        result = subprocess.run(command, capture_output=True, text=True)
+        detail = (result.stderr or result.stdout).strip()
+
+    if result.returncode != 0:
+        suffix = f": {detail}" if detail else ""
+        raise OSError(f"`claude mcp add` failed{suffix}")
+
+    return result.stdout.strip() or "Configured Claude Code MCP server 'pymol'."
+
+
+def install_cursor_mcp(host: str, port: int) -> str:
+    """Register the restart-surviving proxy in Cursor's global MCP config."""
+    return write_mcp_config(
+        Path.home() / ".cursor" / "mcp.json", host, port, use_sse=False
+    )
+
+
+def cmd_setup(args: argparse.Namespace) -> None:
+    """Install the shared PyMOL hook and configure only the chosen client."""
+    if args.client == "codex":
+        # Preflight before changing ~/.pymolrc.py so a missing selected client
+        # fails without leaving a partial setup. Other clients are not checked.
+        if shutil.which("codex") is None:
+            raise OSError(
+                "Codex CLI was not found on PATH. Install Codex first, then "
+                "re-run `co-pymol setup codex`."
+            )
+        configure = install_codex_mcp
+        restart = "Start a new Codex session"
+    elif args.client == "claude":
+        if shutil.which("claude") is None:
+            raise OSError(
+                "Claude Code CLI was not found on PATH. Install Claude Code "
+                "first, then re-run `co-pymol setup claude`."
+            )
+        configure = install_claude_mcp
+        restart = "Start a new Claude Code session"
+    else:
+        configure = install_cursor_mcp
+        restart = "Fully quit and reopen Cursor"
+
+    print(write_pymolrc_hook(Path.home() / ".pymolrc.py"))
+    print(configure(args.host, args.port))
+    print(f"Restart PyMOL. {restart} to load the pymol tools.")
+
+
 def cmd_install_codex(args: argparse.Namespace) -> None:
     print(install_codex_mcp(args.host, args.port))
     print("Start a new Codex session to load the pymol tools.")
@@ -188,6 +272,28 @@ def build_parser() -> argparse.ArgumentParser:
         description="co-pymol setup and diagnostics",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_setup = sub.add_parser(
+        "setup",
+        help="Install the PyMOL hook and configure one MCP client",
+        description=(
+            "Set up co-pymol for exactly one client. This installs the shared "
+            "PyMOL startup hook and configures only the selected client; other "
+            "clients do not need to be installed."
+        ),
+    )
+    setup_clients = p_setup.add_subparsers(dest="client", required=True)
+    for client, label in (
+        ("codex", "Codex"),
+        ("cursor", "Cursor"),
+        ("claude", "Claude Code"),
+    ):
+        p_client = setup_clients.add_parser(
+            client,
+            help=f"Install the PyMOL hook and configure {label}",
+        )
+        add_server_opts(p_client)
+        p_client.set_defaults(func=cmd_setup)
 
     p_hook = sub.add_parser(
         "install-hook",
